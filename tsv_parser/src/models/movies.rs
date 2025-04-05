@@ -93,12 +93,12 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
 
     println!("Parsing {}", file_path.to_str().unwrap_or("invalid path"));
 
-    let write_path1: PathBuf = "./temp/parsed/title-basic/fixed_unique_movies.csv".into();
-    let write_path2: PathBuf = "./temp/parsed/title-basic/movies.csv".into();
-    let write_path3: PathBuf = "./temp/parsed/title-basic/ids_imdb.csv".into();
-    let write_path4: PathBuf = "./temp/parsed/title-basic/imdb_to_genre.csv".into();
-    let write_path5: PathBuf = "./temp/parsed/title-basic/unique_title_type.csv".into();
-    let write_path6: PathBuf = "./temp/parsed/title-basic/ids_genre.csv".into();
+    let write_path1: PathBuf = "./temp/parsed/title-basic/fixed_imdb_title_basic.tsv".into();
+    let write_path2: PathBuf = "./temp/parsed/title-basic/movies.tsv".into();
+    let write_path3: PathBuf = "./temp/parsed/title-basic/ids_imdb.tsv".into();
+    let write_path4: PathBuf = "./temp/parsed/title-basic/imdb_to_genre.tsv".into();
+    let write_path5: PathBuf = "./temp/parsed/title-basic/unique_title_type.tsv".into();
+    let write_path6: PathBuf = "./temp/parsed/title-basic/ids_genre.tsv".into();
 
     let mut wtr1 = csv_writer(&write_path1)?;
     let mut wtr2 = csv_writer(&write_path2)?;
@@ -180,6 +180,181 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
 
     ids_genre_sorted.sort_by_key(|key| key.genre_id);
     save_as_csv(&write_path6, &ids_genre_sorted)?;
+
+    let elapsed_time = now.elapsed();
+    println!(
+        "Done parsing {} in {} ms.",
+        file_path.to_str().unwrap_or("invalid path"),
+        elapsed_time.as_millis()
+    );
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImdbIdString {
+    pub imdb_id: u64,
+    pub tconst: String,
+}
+
+pub fn load_ids_imdb(file_path: &PathBuf) -> Result<Vec<ImdbIdString>, CsvParseError> {
+    let mut records = Vec::new();
+
+    let mut rdr = csv_reader(file_path, false)?;
+    for (index, result) in rdr.deserialize::<ImdbIdString>().enumerate() {
+        match result {
+            Ok(r) => records.push(r),
+            Err(e) => println!("index: {}, error: {:?}", index, e),
+        }
+    }
+    Ok(records)
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TitleAkas<'a> {
+    /// titleId (string) - a tconst, an alphanumeric unique identifier of the title (i.e imdb id: eg:tt0000001)
+    title_id: &'a str,
+    /// ordering (integer) – a number to uniquely identify rows for a given titleId
+    ordering: u16,
+    /// title (&'a str ) – the localized title
+    title: &'a str,
+    /// region (&'a str ) - the region for this version of the title
+    region: &'a str,
+    /// language (&'a str ) - the language of the title
+    language: &'a str,
+    /// types (array) - Enumerated set of attributes for this alternative title. One or more of the following: "alternative", "dvd", "festival", "tv", "video", "working", "original", "imdbDisplay". New values may be added in the future without warning
+    types: &'a str,
+    /// attributes (array) - Additional terms to describe this alternative title, not enumerated
+    attributes: &'a str,
+    /// isOriginalTitle (boolean) – 0: not original title; 1: original title
+    is_original_title: &'a str,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImdbMovieAkas<'a> {
+    imdb_id: u64,
+    /// ordering (integer) – a number to uniquely identify rows for a given titleId
+    ordering: u16,
+    /// title (&'a str) – the localized title
+    title: &'a str,
+    /// region (&'a str) - the region for this version of the title
+    region: &'a str,
+    /// language (&'a str) - the language of the title
+    language: &'a str,
+    /// types (array) - Enumerated set of attributes for this alternative title. One or more of the following: "alternative", "dvd", "festival", "tv", "video", "working", "original", "imdbDisplay". New values may be added in the future without warning
+    types: &'a str,
+    /// attributes (array) - Additional terms to describe this alternative title, not enumerated
+    attributes: &'a str,
+    is_original_title: bool,
+}
+
+pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvParseError> {
+    let ids_imdb = load_ids_imdb(&"./temp/parsed/title-basic/ids_imdb.tsv".into())?;
+    let mut unique_region = HashSet::new();
+    let mut unique_language = HashSet::new();
+    let mut unique_types = HashSet::new();
+    let mut unique_attributes = HashSet::new();
+
+    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+        .iter()
+        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .collect();
+
+    let mut rdr = csv_reader(file_path, false)?;
+
+    let mut raw_record = csv::StringRecord::new();
+    let headers = rdr.headers()?.clone();
+
+    println!("Parsing {}", file_path.to_str().unwrap_or("invalid path"));
+    let now = Instant::now();
+
+    let write_path1: PathBuf = "./temp/parsed/title-akas/fixed_imdb_title_akas.tsv".into();
+    let write_path2: PathBuf = "./temp/parsed/title-akas/imdb_parsed_akas.tsv".into();
+    let write_path3: PathBuf = "./temp/parsed/title-akas/unique_region.tsv".into();
+    let write_path4: PathBuf = "./temp/parsed/title-akas/unique_language.tsv".into();
+    let write_path5: PathBuf = "./temp/parsed/title-akas/unique_types.tsv".into();
+    let write_path6: PathBuf = "./temp/parsed/title-akas/unique_attributes.tsv".into();
+
+    let mut wtr1 = csv_writer(&write_path1)?;
+    let mut wtr2 = csv_writer(&write_path2)?;
+
+    let mut index = 1_u32;
+
+    while rdr.read_record(&mut raw_record)? {
+        let record: TitleAkas = match raw_record.deserialize(Some(&headers)) {
+            Ok(r) => r,
+            Err(e) => {
+                println!("index: {}, error: {:?}", index, e);
+                continue;
+            }
+        };
+        let record_clone = record.clone();
+
+        wtr1.serialize(record)?;
+
+        wtr2.serialize(ImdbMovieAkas {
+            imdb_id: *ids_imdb_map.get(record_clone.title_id).unwrap_or_else(|| {
+                panic!(
+                    "imdb id not found for title_id/tconst : {}",
+                    record_clone.title_id
+                )
+            }),
+            ordering: record_clone.ordering,
+            title: record_clone.title,
+            region: record_clone.region,
+            language: record_clone.language,
+            types: record_clone
+                .types
+                .split('\u{0002}')
+                .collect::<Vec<&str>>()
+                .join(",")
+                .as_str(),
+            attributes: record_clone
+                .attributes
+                .split('\u{0002}')
+                .collect::<Vec<&str>>()
+                .join(",")
+                .as_str(),
+            is_original_title: record_clone.is_original_title == "1",
+        })?;
+
+        unique_region.insert(record_clone.region.to_string());
+        unique_language.insert(record_clone.language.to_string());
+        unique_types.insert(record_clone.types.to_string());
+        unique_attributes.insert(record_clone.attributes.to_string());
+
+        if index % 10000 == 0 {
+            wtr1.flush()?;
+            wtr2.flush()?;
+        }
+
+        index += 1;
+    }
+    wtr1.flush()?;
+    wtr2.flush()?;
+
+    let mut unique_region_csv = unique_region.into_iter().collect::<Vec<String>>();
+    unique_region_csv.insert(0, "unique_region".into());
+    let mut unique_language_csv = unique_language.into_iter().collect::<Vec<String>>();
+    unique_language_csv.insert(0, "unique_language".into());
+    let mut unique_types_csv = unique_types
+        .into_iter()
+        .map(|v| v.split('\u{0002}').collect::<Vec<&str>>().join(","))
+        .collect::<Vec<String>>();
+    unique_types_csv.insert(0, "unique_types".into());
+    let mut unique_attributes_csv = unique_attributes
+        .into_iter()
+        .map(|v| v.split('\u{0002}').collect::<Vec<&str>>().join(","))
+        .collect::<Vec<String>>();
+    unique_attributes_csv.insert(0, "unique_attributes".into());
+
+    save_as_csv(&write_path3, &unique_region_csv)?;
+    save_as_csv(&write_path4, &unique_language_csv)?;
+    save_as_csv(&write_path5, &unique_types_csv)?;
+    save_as_csv(&write_path6, &unique_attributes_csv)?;
 
     let elapsed_time = now.elapsed();
     println!(

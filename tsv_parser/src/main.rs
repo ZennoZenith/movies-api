@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_basic;
-
 fn main() {
     println!("Hello, world!");
     let _name_basics_path: PathBuf = "./temp/imdb-tsv/name.basics.tsv".into();
@@ -12,5 +10,9 @@ fn main() {
     let _title_principals_path: PathBuf = "./temp/imdb-tsv/title.principals.tsv".into();
     let _title_ratings_path: PathBuf = "./temp/imdb-tsv/title.ratings.tsv".into();
 
-    parse_and_save_imdb_title_basic(&_title_basics_path).unwrap();
+    // use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_basic;
+    // parse_and_save_imdb_title_basic(&_title_basics_path).unwrap();
+
+    // use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_akas;
+    // parse_and_save_imdb_title_akas(&_title_akas_path).unwrap();
 }
