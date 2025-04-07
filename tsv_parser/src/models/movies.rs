@@ -1,22 +1,15 @@
 use std::{
     collections::{BTreeMap, HashSet},
+    fs::create_dir_all,
     path::PathBuf,
     time::Instant,
 };
 
-use crate::utils::{CsvParseError, csv_reader, csv_writer, error_chain_fmt, save_as_csv};
+use crate::{
+    models::misc::{load_country_code, load_language_code},
+    utils::{CsvParseError, csv_reader, csv_writer, save_as_csv},
+};
 use serde::{Deserialize, Serialize};
-
-#[derive(thiserror::Error)]
-pub enum MovieParseError {
-    #[error(transparent)]
-    CsvParseError(#[from] CsvParseError),
-}
-impl std::fmt::Debug for MovieParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,9 +35,8 @@ pub struct TitleBasic<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImdbMovie<'a> {
-    pub imdb_id: u64,
+pub struct Movie<'a> {
+    pub id: u64,
     /// titleType (&'a str ) – the type/format of the title (e.g. movie, short, tvseries, tvepisode, video, etc)
     pub title_type: &'a str,
     /// primaryTitle (&'a str ) – the more popular title / the title used by the filmmakers on promotional materials at the point of release
@@ -62,57 +54,56 @@ pub struct ImdbMovie<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenreId {
-    pub genre_id: u16,
+pub struct GenreSized {
+    pub id: u16,
     pub genre: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImdbId<'a> {
-    pub imdb_id: u64,
+pub struct MovieTconst<'a> {
+    pub movie_id: u64,
     /// tconst (string) - alphanumeric unique identifier of the title
     pub tconst: &'a str,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImdbMovieToGenre {
-    pub imdb_id: u64,
+pub struct MovieGenre {
+    pub movie_id: u64,
     pub genre_id: u16,
 }
 
 pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvParseError> {
+    create_dir_all("./temp/parsed/title-basic")
+        .expect("cannot create dir: ./temp/parsed/title-basic");
+
     let mut rdr = csv_reader(file_path, false)?;
     let mut unique_title_type = HashSet::new();
     let mut raw_record = csv::StringRecord::new();
     let mut ids_genre: BTreeMap<String, u16> = BTreeMap::new();
     let mut genre_id = 1_u16;
+    let mut movie_id: u64 = 1;
     let headers = rdr.headers()?.clone();
 
     println!("Parsing {}", file_path.to_str().unwrap_or("invalid path"));
 
     let write_path1: PathBuf = "./temp/parsed/title-basic/fixed_imdb_title_basic.tsv".into();
     let write_path2: PathBuf = "./temp/parsed/title-basic/movies.tsv".into();
-    let write_path3: PathBuf = "./temp/parsed/title-basic/ids_imdb.tsv".into();
-    let write_path4: PathBuf = "./temp/parsed/title-basic/imdb_to_genre.tsv".into();
+    let write_path3: PathBuf = "./temp/parsed/title-basic/movie_id_to_tconst.tsv".into();
+    let write_path4: PathBuf = "./temp/parsed/title-basic/movie_id_to_genre_id.tsv".into();
     let write_path5: PathBuf = "./temp/parsed/title-basic/unique_title_type.tsv".into();
-    let write_path6: PathBuf = "./temp/parsed/title-basic/ids_genre.tsv".into();
+    let write_path6: PathBuf = "./temp/parsed/title-basic/genres.tsv".into();
 
     let mut wtr1 = csv_writer(&write_path1)?;
     let mut wtr2 = csv_writer(&write_path2)?;
     let mut wtr3 = csv_writer(&write_path3)?;
     let mut wtr4 = csv_writer(&write_path4)?;
 
-    let mut imdb_id: u64 = 1;
-
     let now = Instant::now();
     while rdr.read_record(&mut raw_record)? {
         let record: TitleBasic = match raw_record.deserialize(Some(&headers)) {
             Ok(r) => r,
             Err(e) => {
-                println!("index: {}, error: {:?}", imdb_id, e);
+                println!("index: {}, error: {:?}", movie_id, e);
                 continue;
             }
         };
@@ -120,8 +111,8 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
         unique_title_type.insert(record_clone.title_type.to_string());
         wtr1.serialize(record)?;
 
-        wtr2.serialize(ImdbMovie {
-            imdb_id,
+        wtr2.serialize(Movie {
+            id: movie_id,
             title_type: record_clone.title_type,
             primary_title: record_clone.primary_title,
             original_title: record_clone.original_title,
@@ -131,21 +122,21 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
             runtime_minutes: record_clone.runtime_minutes.parse().unwrap_or_default(),
         })?;
 
-        wtr3.serialize(ImdbId {
-            imdb_id,
+        wtr3.serialize(MovieTconst {
+            movie_id,
             tconst: record_clone.tconst,
         })?;
 
         for genre in record_clone.genres.split(",") {
             if let Some(current_genre_id) = ids_genre.get(genre) {
-                wtr4.serialize(ImdbMovieToGenre {
-                    imdb_id,
+                wtr4.serialize(MovieGenre {
+                    movie_id,
                     genre_id: *current_genre_id,
                 })?;
             } else if genre == "\\N" {
                 continue;
             } else {
-                wtr4.serialize(ImdbMovieToGenre { imdb_id, genre_id })?;
+                wtr4.serialize(MovieGenre { movie_id, genre_id })?;
                 let temp = ids_genre.insert(genre.to_string(), genre_id);
                 assert_eq!(
                     temp, None,
@@ -155,14 +146,14 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
             }
         }
 
-        if imdb_id % 10000 == 0 {
+        if movie_id % 10000 == 0 {
             wtr1.flush()?;
             wtr2.flush()?;
             wtr3.flush()?;
             wtr4.flush()?;
         }
 
-        imdb_id += 1;
+        movie_id += 1;
     }
     wtr1.flush()?;
     wtr2.flush()?;
@@ -170,15 +161,18 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
     wtr4.flush()?;
 
     let mut unique_title_type_csv: Vec<String> = unique_title_type.into_iter().collect();
-    unique_title_type_csv.insert(0, "titleType".into());
+    unique_title_type_csv.insert(0, "title_type".into());
     save_as_csv(&write_path5, &unique_title_type_csv)?;
 
     let mut ids_genre_sorted = ids_genre
         .into_iter()
-        .map(|(genre, genre_id)| GenreId { genre_id, genre })
-        .collect::<Vec<GenreId>>();
+        .map(|(genre, genre_id)| GenreSized {
+            id: genre_id,
+            genre,
+        })
+        .collect::<Vec<GenreSized>>();
 
-    ids_genre_sorted.sort_by_key(|key| key.genre_id);
+    ids_genre_sorted.sort_by_key(|key| key.id);
     save_as_csv(&write_path6, &ids_genre_sorted)?;
 
     let elapsed_time = now.elapsed();
@@ -192,18 +186,17 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImdbIdString {
-    pub imdb_id: u64,
+pub struct MovieTconstSized {
+    pub movie_id: u64,
     pub tconst: String,
 }
 
-pub fn load_ids_imdb() -> Result<Vec<ImdbIdString>, CsvParseError> {
-    let path: PathBuf = "./temp/parsed/title-basic/ids_imdb.tsv".into();
+pub fn load_movie_id_tconst() -> Result<Vec<MovieTconstSized>, CsvParseError> {
+    let path: PathBuf = "./temp/parsed/title-basic/movie_id_to_tconst.tsv".into();
     let mut records = Vec::new();
 
     let mut rdr = csv_reader(&path, false)?;
-    for (index, result) in rdr.deserialize::<ImdbIdString>().enumerate() {
+    for (index, result) in rdr.deserialize::<MovieTconstSized>().enumerate() {
         match result {
             Ok(r) => records.push(r),
             Err(e) => println!("index: {}, error: {:?}", index, e),
@@ -212,6 +205,7 @@ pub fn load_ids_imdb() -> Result<Vec<ImdbIdString>, CsvParseError> {
     Ok(records)
 }
 
+// https://help.imdb.com/article/contribution/other-submission-guides/country-codes/G99K4LFRMSC37DCN?ref_=helpart_nav_6#
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TitleAkas<'a> {
@@ -234,17 +228,14 @@ pub struct TitleAkas<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImdbMovieAkas<'a> {
-    imdb_id: u64,
+pub struct MovieAkas<'a> {
+    movie_id: u64,
     /// ordering (integer) – a number to uniquely identify rows for a given titleId
     ordering: u16,
     /// title (&'a str) – the localized title
     title: &'a str,
-    /// region (&'a str) - the region for this version of the title
-    region: &'a str,
-    /// language (&'a str) - the language of the title
-    language: &'a str,
+    country_id: &'a str,
+    language_id: &'a str,
     /// types (array) - Enumerated set of attributes for this alternative title. One or more of the following: "alternative", "dvd", "festival", "tv", "video", "working", "original", "imdbDisplay". New values may be added in the future without warning
     types: &'a str,
     /// attributes (array) - Additional terms to describe this alternative title, not enumerated
@@ -253,16 +244,31 @@ pub struct ImdbMovieAkas<'a> {
 }
 
 pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let ids_imdb = load_ids_imdb()?;
+    create_dir_all("./temp/parsed/title-akas")
+        .expect("cannot create dir: ./temp/parsed/title-akas");
+
+    let movie_id_tconst = load_movie_id_tconst()?;
+    let language_id_code = load_language_code()?;
+    let country_id_code = load_country_code()?;
 
     let mut unique_region = HashSet::new();
     let mut unique_language = HashSet::new();
     let mut unique_types = HashSet::new();
     let mut unique_attributes = HashSet::new();
 
-    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+    let ids_tconst_map: BTreeMap<&str, u64> = movie_id_tconst
         .iter()
-        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .map(|data| (data.tconst.as_str(), data.movie_id))
+        .collect();
+
+    let ids_language_map: BTreeMap<&str, u16> = language_id_code
+        .iter()
+        .map(|data| (data.imdb_language_code.as_str(), data.id))
+        .collect();
+
+    let ids_country_map: BTreeMap<&str, u16> = country_id_code
+        .iter()
+        .map(|data| (data.imdb_country_code.as_str(), data.id))
         .collect();
 
     let mut rdr = csv_reader(file_path, false)?;
@@ -274,7 +280,7 @@ pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvPars
     let now = Instant::now();
 
     let write_path1: PathBuf = "./temp/parsed/title-akas/fixed_imdb_title_akas.tsv".into();
-    let write_path2: PathBuf = "./temp/parsed/title-akas/imdb_parsed_akas.tsv".into();
+    let write_path2: PathBuf = "./temp/parsed/title-akas/movie_akas.tsv".into();
     let write_path3: PathBuf = "./temp/parsed/title-akas/unique_region.tsv".into();
     let write_path4: PathBuf = "./temp/parsed/title-akas/unique_language.tsv".into();
     let write_path5: PathBuf = "./temp/parsed/title-akas/unique_types.tsv".into();
@@ -297,17 +303,25 @@ pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvPars
 
         wtr1.serialize(record)?;
 
-        wtr2.serialize(ImdbMovieAkas {
-            imdb_id: *ids_imdb_map.get(record_clone.title_id).unwrap_or_else(|| {
-                panic!(
-                    "imdb id not found for title_id/tconst : {}",
-                    record_clone.title_id
-                )
-            }),
+        wtr2.serialize(MovieAkas {
+            movie_id: *ids_tconst_map
+                .get(record_clone.title_id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "imdb id not found for title_id/tconst : {}",
+                        record_clone.title_id
+                    )
+                }),
             ordering: record_clone.ordering,
             title: record_clone.title,
-            region: record_clone.region,
-            language: record_clone.language,
+            country_id: &ids_country_map
+                .get(record_clone.region)
+                .map(|v| v.to_string())
+                .unwrap_or("\\N".into()),
+            language_id: &ids_language_map
+                .get(record_clone.language)
+                .map(|v| v.to_string())
+                .unwrap_or("\\N".into()),
             types: record_clone
                 .types
                 .split('\u{0002}')

@@ -13,8 +13,8 @@ fn main() {
     // use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_basic;
     // parse_and_save_imdb_title_basic(&_title_basics_path).unwrap();
 
-    // use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_akas;
-    // parse_and_save_imdb_title_akas(&_title_akas_path).unwrap();
+    use movies_api_tsv_parser::models::movies::parse_and_save_imdb_title_akas;
+    parse_and_save_imdb_title_akas(&_title_akas_path).unwrap();
 
     // use movies_api_tsv_parser::models::names::parse_and_save_imdb_name_basic;
     // parse_and_save_imdb_name_basic(&_name_basics_path).unwrap();
