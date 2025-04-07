@@ -170,7 +170,7 @@ pub fn parse_and_save_imdb_title_basic(file_path: &PathBuf) -> Result<(), CsvPar
     wtr4.flush()?;
 
     let mut unique_title_type_csv: Vec<String> = unique_title_type.into_iter().collect();
-    unique_title_type_csv.insert(0, "title_type".into());
+    unique_title_type_csv.insert(0, "titleType".into());
     save_as_csv(&write_path5, &unique_title_type_csv)?;
 
     let mut ids_genre_sorted = ids_genre
@@ -198,10 +198,11 @@ pub struct ImdbIdString {
     pub tconst: String,
 }
 
-pub fn load_ids_imdb(file_path: &PathBuf) -> Result<Vec<ImdbIdString>, CsvParseError> {
+pub fn load_ids_imdb() -> Result<Vec<ImdbIdString>, CsvParseError> {
+    let path: PathBuf = "./temp/parsed/title-basic/ids_imdb.tsv".into();
     let mut records = Vec::new();
 
-    let mut rdr = csv_reader(file_path, false)?;
+    let mut rdr = csv_reader(&path, false)?;
     for (index, result) in rdr.deserialize::<ImdbIdString>().enumerate() {
         match result {
             Ok(r) => records.push(r),
@@ -252,7 +253,8 @@ pub struct ImdbMovieAkas<'a> {
 }
 
 pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let ids_imdb = load_ids_imdb(&"./temp/parsed/title-basic/ids_imdb.tsv".into())?;
+    let ids_imdb = load_ids_imdb()?;
+
     let mut unique_region = HashSet::new();
     let mut unique_language = HashSet::new();
     let mut unique_types = HashSet::new();
@@ -337,19 +339,19 @@ pub fn parse_and_save_imdb_title_akas(file_path: &PathBuf) -> Result<(), CsvPars
     wtr2.flush()?;
 
     let mut unique_region_csv = unique_region.into_iter().collect::<Vec<String>>();
-    unique_region_csv.insert(0, "unique_region".into());
+    unique_region_csv.insert(0, "uniqueRegion".into());
     let mut unique_language_csv = unique_language.into_iter().collect::<Vec<String>>();
-    unique_language_csv.insert(0, "unique_language".into());
+    unique_language_csv.insert(0, "uniqueLanguage".into());
     let mut unique_types_csv = unique_types
         .into_iter()
         .map(|v| v.split('\u{0002}').collect::<Vec<&str>>().join(","))
         .collect::<Vec<String>>();
-    unique_types_csv.insert(0, "unique_types".into());
+    unique_types_csv.insert(0, "uniqueTypes".into());
     let mut unique_attributes_csv = unique_attributes
         .into_iter()
         .map(|v| v.split('\u{0002}').collect::<Vec<&str>>().join(","))
         .collect::<Vec<String>>();
-    unique_attributes_csv.insert(0, "unique_attributes".into());
+    unique_attributes_csv.insert(0, "uniqueAttributes".into());
 
     save_as_csv(&write_path3, &unique_region_csv)?;
     save_as_csv(&write_path4, &unique_language_csv)?;
