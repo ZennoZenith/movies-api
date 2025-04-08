@@ -1,13 +1,13 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::File,
+    fs::{File, create_dir_all},
     io::Write,
     path::PathBuf,
     time::Instant,
 };
 
 use crate::{
-    models::{movies::load_ids_imdb, names::load_ids_names},
+    models::{movies::load_movie_id_tconst, names::load_ids_person},
     utils::{CsvParseError, csv_reader, csv_writer},
 };
 use serde::{Deserialize, Serialize};
@@ -24,34 +24,35 @@ pub struct TitleCrew<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CrewsDirectors {
-    imdb_id: u64,
-    name_id: u64,
+    movie_id: u64,
+    person_id: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CrewsWriters {
-    imdb_id: u64,
-    name_id: u64,
+    movie_id: u64,
+    person_id: u64,
 }
 
 pub fn parse_and_save_imdb_title_crew(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let mut unknow_imdb_id = HashSet::new();
-    let mut unknow_name_id = HashSet::new();
+    create_dir_all("./temp/parsed/title-crew")
+        .expect("cannot create dir: ./temp/parsed/title-crew");
 
-    let ids_imdb = load_ids_imdb()?;
-    let ids_name = load_ids_names()?;
+    let mut unknow_movie_tconst = HashSet::new();
+    let mut unknow_person_nconst = HashSet::new();
 
-    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+    let ids_movie = load_movie_id_tconst()?;
+    let ids_person = load_ids_person()?;
+
+    let ids_movie_map: BTreeMap<&str, u64> = ids_movie
         .iter()
-        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .map(|data| (data.tconst.as_str(), data.movie_id))
         .collect();
 
-    let ids_name_map: BTreeMap<&str, u64> = ids_name
+    let ids_person_map: BTreeMap<&str, u64> = ids_person
         .iter()
-        .map(|data| (data.nconst.as_str(), data.name_id))
+        .map(|data| (data.nconst.as_str(), data.person_id))
         .collect();
 
     let mut rdr = csv_reader(file_path, false)?;
@@ -81,10 +82,10 @@ pub fn parse_and_save_imdb_title_crew(file_path: &PathBuf) -> Result<(), CsvPars
             }
         };
 
-        let imdb_id = match ids_imdb_map.get(record.tconst).copied() {
+        let movie_id = match ids_movie_map.get(record.tconst).copied() {
             Some(id) => id,
             None => {
-                unknow_imdb_id.insert(record.tconst.to_string());
+                unknow_movie_tconst.insert(record.tconst.to_string());
                 continue;
             }
         };
@@ -93,10 +94,13 @@ pub fn parse_and_save_imdb_title_crew(file_path: &PathBuf) -> Result<(), CsvPars
             if nconst == "\\N" {
                 continue;
             }
-            match ids_name_map.get(nconst).copied() {
-                Some(name_id) => wtr1.serialize(CrewsDirectors { imdb_id, name_id })?,
+            match ids_person_map.get(nconst).copied() {
+                Some(person_id) => wtr1.serialize(CrewsDirectors {
+                    movie_id,
+                    person_id,
+                })?,
                 None => {
-                    unknow_name_id.insert(nconst.to_string());
+                    unknow_person_nconst.insert(nconst.to_string());
                 }
             };
         }
@@ -105,10 +109,13 @@ pub fn parse_and_save_imdb_title_crew(file_path: &PathBuf) -> Result<(), CsvPars
             if nconst == "\\N" {
                 continue;
             }
-            match ids_name_map.get(nconst).copied() {
-                Some(name_id) => wtr2.serialize(CrewsWriters { imdb_id, name_id })?,
+            match ids_person_map.get(nconst).copied() {
+                Some(person_id) => wtr2.serialize(CrewsWriters {
+                    movie_id,
+                    person_id,
+                })?,
                 None => {
-                    unknow_name_id.insert(nconst.to_string());
+                    unknow_person_nconst.insert(nconst.to_string());
                 }
             };
         }
@@ -131,19 +138,16 @@ pub fn parse_and_save_imdb_title_crew(file_path: &PathBuf) -> Result<(), CsvPars
     );
 
     let mut file = File::create(error_write_path1)?;
-    let v = unknow_imdb_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_movie_tconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
     println!(
-        "imdb id not found for title_id/tconst : \n{}",
+        "movie id not found for tconst : \n{}",
         v.join("\n").as_str()
     );
 
     let mut file = File::create(error_write_path2)?;
-    let v = unknow_name_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_person_nconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
-    println!(
-        "imdb id not found for title_id/tconst : \n{}",
-        v.join("\n").as_str()
-    );
+    println!("person not found for nconst : \n{}", v.join("\n").as_str());
     Ok(())
 }

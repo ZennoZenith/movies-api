@@ -1,13 +1,13 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::File,
+    fs::{File, create_dir_all},
     io::Write,
     path::PathBuf,
     time::Instant,
 };
 
 use crate::{
-    models::movies::load_ids_imdb,
+    models::movies::load_movie_id_tconst,
     utils::{CsvParseError, csv_reader, csv_writer},
 };
 use serde::{Deserialize, Serialize};
@@ -26,21 +26,23 @@ pub struct TitleEpisode<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Shows<'a> {
-    pub show_imdb_id: u64,
-    pub episode_imdb_id: u64,
+    pub show_id: u64,
+    pub episode_id: u64,
     season_number: &'a str,
     episode_number: &'a str,
 }
 
-pub fn parse_and_save_title_basic(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let ids_imdb = load_ids_imdb()?;
-    let mut unknow_imdb_id = HashSet::new();
+pub fn parse_and_save_title_episode(file_path: &PathBuf) -> Result<(), CsvParseError> {
+    create_dir_all("./temp/parsed/title-episodes")
+        .expect("cannot create dir: ./temp/parsed/title-episodes");
 
-    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+    let ids_movie = load_movie_id_tconst()?;
+    let mut unknow_movie_tconst = HashSet::new();
+
+    let ids_imdb_map: BTreeMap<&str, u64> = ids_movie
         .iter()
-        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .map(|data| (data.tconst.as_str(), data.movie_id))
         .collect();
 
     let mut rdr = csv_reader(file_path, false)?;
@@ -67,24 +69,24 @@ pub fn parse_and_save_title_basic(file_path: &PathBuf) -> Result<(), CsvParseErr
             }
         };
 
-        let show_imdb_id = match ids_imdb_map.get(record.tconst).copied() {
+        let show_id = match ids_imdb_map.get(record.tconst).copied() {
             Some(id) => id,
             None => {
-                unknow_imdb_id.insert(record.tconst.to_string());
+                unknow_movie_tconst.insert(record.tconst.to_string());
                 continue;
             }
         };
-        let episode_imdb_id = match ids_imdb_map.get(record.tconst).copied() {
+        let episode_id = match ids_imdb_map.get(record.tconst).copied() {
             Some(id) => id,
             None => {
-                unknow_imdb_id.insert(record.tconst.to_string());
+                unknow_movie_tconst.insert(record.tconst.to_string());
                 continue;
             }
         };
 
         wtr1.serialize(Shows {
-            show_imdb_id,
-            episode_imdb_id,
+            show_id,
+            episode_id,
             season_number: record.season_number,
             episode_number: record.episode_number,
         })?;
@@ -111,7 +113,7 @@ pub fn parse_and_save_title_basic(file_path: &PathBuf) -> Result<(), CsvParseErr
     );
 
     let mut file = File::create(error_write_path1)?;
-    let v = unknow_imdb_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_movie_tconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
 
     println!(

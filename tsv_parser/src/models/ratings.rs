@@ -1,13 +1,13 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::File,
+    fs::{File, create_dir_all},
     io::Write,
     path::PathBuf,
     time::Instant,
 };
 
 use crate::{
-    models::movies::load_ids_imdb,
+    models::movies::load_movie_id_tconst,
     utils::{CsvParseError, csv_reader, csv_writer},
 };
 use serde::{Deserialize, Serialize};
@@ -24,9 +24,8 @@ pub struct TitleRating<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Ratings {
-    imdb_id: u64,
+    movie_id: u64,
     /// averageRating – weighted average of all the individual user ratings
     average_rating: f64,
     /// numVotes - number of votes the title has received
@@ -34,12 +33,15 @@ pub struct Ratings {
 }
 
 pub fn parse_and_save_imdb_title_rating(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let mut unknow_imdb_id = HashSet::new();
+    create_dir_all("./temp/parsed/title-rating")
+        .expect("cannot create dir: ./temp/parsed/title-rating");
 
-    let ids_imdb = load_ids_imdb()?;
-    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+    let mut unknow_movie_tconst = HashSet::new();
+
+    let ids_movie = load_movie_id_tconst()?;
+    let ids_movie_map: BTreeMap<&str, u64> = ids_movie
         .iter()
-        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .map(|data| (data.tconst.as_str(), data.movie_id))
         .collect();
 
     let mut rdr = csv_reader(file_path, false)?;
@@ -63,14 +65,14 @@ pub fn parse_and_save_imdb_title_rating(file_path: &PathBuf) -> Result<(), CsvPa
             }
         };
 
-        match ids_imdb_map.get(record.tconst).copied() {
-            Some(imdb_id) => wtr1.serialize(Ratings {
-                imdb_id,
+        match ids_movie_map.get(record.tconst).copied() {
+            Some(movie_id) => wtr1.serialize(Ratings {
+                movie_id,
                 average_rating: record.average_rating,
                 num_votes: record.num_votes,
             })?,
             None => {
-                unknow_imdb_id.insert(record.tconst.to_string());
+                unknow_movie_tconst.insert(record.tconst.to_string());
             }
         };
 
@@ -90,7 +92,7 @@ pub fn parse_and_save_imdb_title_rating(file_path: &PathBuf) -> Result<(), CsvPa
     );
 
     let mut file = File::create(error_write_path1)?;
-    let v = unknow_imdb_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_movie_tconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
 
     println!(

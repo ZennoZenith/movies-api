@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::File,
+    fs::{File, create_dir_all},
     io::Write,
     path::PathBuf,
     time::Instant,
@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     models::{
-        movies::load_ids_imdb,
-        names::{load_ids_names, load_ids_professions},
+        movies::load_movie_id_tconst,
+        names::{load_ids_person, load_ids_professions},
     },
     utils::{CsvParseError, csv_reader, csv_writer, save_as_csv},
 };
@@ -33,38 +33,40 @@ pub struct TitlePrincipals<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Principals<'a> {
-    imdb_id: u64,
+    movie_id: u64,
     ordering: u16,
-    name_id: u64,
+    person_id: u64,
     profession_id: u16, // <- category,
     job: &'a str,
     characters: &'a str,
 }
 
 pub fn parse_and_save_title_principal(file_path: &PathBuf) -> Result<(), CsvParseError> {
-    let mut unknow_imdb_id = HashSet::new();
-    let mut unknow_name_id = HashSet::new();
+    create_dir_all("./temp/parsed/title-principal")
+        .expect("cannot create dir: ./temp/parsed/title-principal");
+
+    let mut unknow_movie_tconst = HashSet::new();
+    let mut unknow_person_nconst = HashSet::new();
     let mut unknow_profession_id = HashSet::new();
 
-    let ids_imdb = load_ids_imdb()?;
-    let ids_name = load_ids_names()?;
+    let ids_movie = load_movie_id_tconst()?;
+    let ids_person = load_ids_person()?;
     let ids_profession = load_ids_professions()?;
 
-    let ids_imdb_map: BTreeMap<&str, u64> = ids_imdb
+    let ids_movie_map: BTreeMap<&str, u64> = ids_movie
         .iter()
-        .map(|data| (data.tconst.as_str(), data.imdb_id))
+        .map(|data| (data.tconst.as_str(), data.movie_id))
         .collect();
 
-    let ids_name_map: BTreeMap<&str, u64> = ids_name
+    let ids_person_map: BTreeMap<&str, u64> = ids_person
         .iter()
-        .map(|data| (data.nconst.as_str(), data.name_id))
+        .map(|data| (data.nconst.as_str(), data.person_id))
         .collect();
 
     let ids_profession_map: BTreeMap<&str, u16> = ids_profession
         .iter()
-        .map(|data| (data.profession.as_str(), data.profession_id))
+        .map(|data| (data.profession.as_str(), data.id))
         .collect();
 
     let mut rdr = csv_reader(file_path, false)?;
@@ -98,18 +100,18 @@ pub fn parse_and_save_title_principal(file_path: &PathBuf) -> Result<(), CsvPars
             }
         };
 
-        let imdb_id = match ids_imdb_map.get(record.tconst).copied() {
+        let movie_id = match ids_movie_map.get(record.tconst).copied() {
             Some(id) => id,
             None => {
-                unknow_imdb_id.insert(record.tconst.to_string());
+                unknow_movie_tconst.insert(record.tconst.to_string());
                 continue;
             }
         };
 
-        let name_id = match ids_name_map.get(record.nconst).copied() {
+        let person_id = match ids_person_map.get(record.nconst).copied() {
             Some(id) => id,
             None => {
-                unknow_name_id.insert(record.nconst.to_string());
+                unknow_person_nconst.insert(record.nconst.to_string());
                 continue;
             }
         };
@@ -123,16 +125,21 @@ pub fn parse_and_save_title_principal(file_path: &PathBuf) -> Result<(), CsvPars
         };
 
         let len = record.characters.len();
+
+        // tt0030143	1	nm0071636	actor	\N	["Hal \"Chopper' Donovan, aka Hal Smith"]
+        // ^
+        // |
+        // 29611	1	68337	2	"\N"	"Hal \\"Chopper' Donovan, aka Hal Smith"
         let characters = if record.characters != "\\N" && len >= 4 {
-            &record.characters[2..len - 2]
+            &record.characters[2..len - 2].replace("\\", "")
         } else {
             record.characters
         };
 
         wtr1.serialize(Principals {
-            imdb_id,
+            movie_id,
             ordering: record.ordering,
-            name_id,
+            person_id,
             profession_id,
             job: record.job,
             characters,
@@ -165,7 +172,7 @@ pub fn parse_and_save_title_principal(file_path: &PathBuf) -> Result<(), CsvPars
     save_as_csv(&write_path3, &unique_characters_csv)?;
 
     let mut file = File::create(error_write_path1)?;
-    let v = unknow_imdb_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_movie_tconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
     println!(
         "imdb id not found for title_id/tconst : \n{}",
@@ -173,7 +180,7 @@ pub fn parse_and_save_title_principal(file_path: &PathBuf) -> Result<(), CsvPars
     );
 
     let mut file = File::create(error_write_path2)?;
-    let v = unknow_name_id.into_iter().collect::<Vec<String>>();
+    let v = unknow_person_nconst.into_iter().collect::<Vec<String>>();
     file.write_all(v.join("\n").as_bytes())?;
     println!(
         "imdb id not found for name_id/nconst : \n{}",

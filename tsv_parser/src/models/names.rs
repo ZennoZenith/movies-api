@@ -49,7 +49,7 @@ pub struct PersonNconst<'a> {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Profession {
-    pub profession_id: u16,
+    pub id: u16,
     pub profession: String,
 }
 
@@ -74,12 +74,12 @@ pub struct ImdbNameIdSized {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProfessionIdSized {
-    pub profession_id: u16,
+    pub id: u16,
     pub profession: String,
 }
 
 pub fn load_ids_person() -> Result<Vec<ImdbNameIdSized>, CsvParseError> {
-    let path: PathBuf = "./temp/parsed/name-basic/movie_id_to_tconst.tsv".into();
+    let path: PathBuf = "./temp/parsed/name-basic/person_id_to_nconst.tsv".into();
     let mut records = Vec::new();
 
     let mut rdr = csv_reader(&path, false)?;
@@ -161,7 +161,11 @@ pub fn parse_and_save_imdb_name_basic(file_path: &PathBuf) -> Result<(), CsvPars
 
         wtr2.serialize(Person {
             id: person_id,
-            primary_name: record_clone.primary_name,
+            primary_name: if record_clone.primary_name == "\\N" {
+                ""
+            } else {
+                record_clone.primary_name
+            },
             birth_year: record_clone.birth_year,
             death_year: record_clone.death_year,
         })?;
@@ -226,13 +230,10 @@ pub fn parse_and_save_imdb_name_basic(file_path: &PathBuf) -> Result<(), CsvPars
 
     let mut ids_profession_sorted = ids_profession
         .into_iter()
-        .map(|(profession, profession_id)| Profession {
-            profession_id,
-            profession,
-        })
+        .map(|(profession, id)| Profession { id, profession })
         .collect::<Vec<Profession>>();
 
-    ids_profession_sorted.sort_by_key(|key| key.profession_id);
+    ids_profession_sorted.sort_by_key(|key| key.id);
     save_as_csv(&write_path6, &ids_profession_sorted)?;
 
     let elapsed_time = now.elapsed();
