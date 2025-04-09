@@ -36,11 +36,6 @@ cp temp/parsed/title-basic/movie_id_to_tconst.tsv sql-csv/
 cp temp/parsed/title-basic/movie_id_to_genre_id.tsv sql-csv/
 
 
-let port = "9969"
-let host = "zenith"
-let user = "postgres"
-let database_name = "imdb_movies_db"
-
 let step_01_create_tables = open --raw ./sql/step-01-create-tables.sql
 let step_02_add_constraints = open --raw ./sql/step-02-add-constraints.sql
 
@@ -112,9 +107,15 @@ let copy_commands = $database_info | each { |val|
 
 ################################### DATABASE ##################################
 
+let port = "9969"
+let host = "zenith"
+let user = "postgres"
+let database_name = "imdb_movies_db"
+let dump_file_name = "dump"
+
 $env.PGPASSWORD = "password"
 
-# psql -h $host -p $port -U $user -d $database_name -c $step_01_create_tables
+psql -h $host -p $port -U $user -d $database_name -c $step_01_create_tables
 
 $copy_commands | each { |val|
   print $"Copying from ($val.docker_file_path) to table ($val.table_name)"
@@ -125,4 +126,6 @@ $copy_commands | each { |val|
   $"Done ($val.table_name) in ($time_elasp)"
 }
  
-# psql -h $host -p $port -U $user -d $database_name -c $step_02_add_constraints
+psql -h $host -p $port -U $user -d $database_name -c $step_02_add_constraints
+
+# pg_dump -h $host -p $port -U $user --schema-only $database_name | save -f $'($dump_file_name)_schema_only.sql'

@@ -1,0 +1,13 @@
+[application]
+port = 3001
+host = "127.0.0.1"
+base_url = "http://127.0.0.1"
+api_version = 1
+
+[database]
+host = "127.0.0.1"
+port = 5432
+username = "postgres"
+password = "password"
+database_name = "imdb_movies_db"
+require_ssl = false

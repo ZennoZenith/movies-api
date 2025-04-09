@@ -1,0 +1,14 @@
+[application]
+port = 3000
+host = "127.0.0.1"
+base_url = "http://127.0.0.1"
+api_version = 0
+
+[database]
+host = "127.0.0.1"
+port = 5432
+username = "postgres"
+password = "password"
+database_name = "imdb_movies_db"
+max_connections = 20
+require_ssl = false
